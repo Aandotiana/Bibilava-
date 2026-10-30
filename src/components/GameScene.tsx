@@ -261,7 +261,9 @@ export function GameScene() {
       // Boosting: trigger from boost button or spacebar/W/Up
       const wantBoost = inputs.current.boost || isBoostingInput;
       localPlayerRef.current.isBoosting = wantBoost && localPlayerRef.current.score > 10;
-      const speed = localPlayerRef.current.isBoosting ? BOOST_SPEED : BASE_SPEED;
+      const { room } = useGameStore.getState();
+      const speedMult = room?.settings?.speed === 'fast' ? 1.3 : 1.0;
+      const speed = (localPlayerRef.current.isBoosting ? BOOST_SPEED : BASE_SPEED) * speedMult;
       
       const head = { ...localPlayerRef.current.segments[0] };
       head.x += Math.cos(localPlayerRef.current.currentAngle) * speed * delta;
@@ -377,11 +379,14 @@ export function GameScene() {
         lightTarget.position.set(camera.position.x, camera.position.y, 0);
       }
     } else {
-      localPlayerRef.current.active = false;
+      // Gentle ambient camera drift in lobby/spectator
+      const t = state.clock.getElapsedTime() * 0.1;
+      camera.position.x += (Math.sin(t) * 12 - camera.position.x) * 2 * delta;
+      camera.position.y += (Math.cos(t) * 12 - camera.position.y) * 2 * delta;
+      camera.position.z += (48 - camera.position.z) * 2 * delta;
+      camera.lookAt(0, 0, 0);
     }
   });
-
-  if (!gameState) return null;
 
   return (
     <>
@@ -423,9 +428,9 @@ export function GameScene() {
         fadeStrength={1}
       />
 
-      <Orbs />
+      {gameState && <Orbs />}
 
-      {Object.values(gameState.players).map((player) => {
+      {gameState && Object.values(gameState.players).map((player) => {
         if (player.state !== 'alive' || player.segments.length === 0) return null;
         return (
           <Snake

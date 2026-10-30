@@ -36,11 +36,12 @@ export function MobileTopBar() {
     setLeaderboardOpen,
   } = useMobileControls();
 
-  const { gameState, playerId } = useGameStore();
+  const { gameState, playerId, room } = useGameStore();
   const player = playerId && gameState ? gameState.players[playerId] : null;
 
   // Real-time mic volume level for visual speaking animation
   const [micLevel, setMicLevel] = useState(0);
+  const [timeLeft, setTimeLeft] = useState<string | null>(null);
 
   useEffect(() => {
     let animId: number;
@@ -57,9 +58,24 @@ export function MobileTopBar() {
     return () => cancelAnimationFrame(animId);
   }, [micEnabled]);
 
+  // Match timer countdown
+  useEffect(() => {
+    if (!room?.matchEndsAt) {
+      setTimeLeft(null);
+      return;
+    }
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, Math.floor((room.matchEndsAt! - Date.now()) / 1000));
+      const mins = Math.floor(remaining / 60);
+      const secs = remaining % 60;
+      setTimeLeft(`${mins}:${secs < 10 ? '0' : ''}${secs}`);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [room?.matchEndsAt]);
+
   return (
     <header className="w-full flex items-center justify-between gap-2 px-3 pt-[max(env(safe-area-inset-top),0.75rem)] pb-1 pointer-events-auto z-40">
-      {/* Left: Branding & Player Length */}
+      {/* Left: Branding, Room Code & Player Length */}
       <div className="flex items-center gap-2">
         <div className="flex flex-col">
           <div className="flex items-center gap-1.5">
@@ -67,15 +83,27 @@ export function MobileTopBar() {
             <h1 className="text-xl sm:text-2xl font-black text-white tracking-wider leading-none select-none text-neon-cyan">
               BIBILAVA
             </h1>
-          </div>
-          {player && player.state === 'alive' && (
-            <div className="flex items-center gap-1 mt-1">
-              <span className="text-[11px] font-mono text-zinc-400 uppercase">Length</span>
-              <span className="text-xs font-mono font-bold text-cyan-300 bg-cyan-950/70 border border-cyan-800/60 px-1.5 py-0.2 rounded">
-                {Math.floor(player.score)}
+            {room && (
+              <span className="text-[10px] font-mono font-bold text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800">
+                {room.code}
               </span>
-            </div>
-          )}
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            {player && player.state === 'alive' && (
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] font-mono text-zinc-400 uppercase">Length</span>
+                <span className="text-xs font-mono font-bold text-cyan-300 bg-cyan-950/70 border border-cyan-800/60 px-1.5 py-0.2 rounded">
+                  {Math.floor(player.score)}
+                </span>
+              </div>
+            )}
+            {timeLeft && (
+              <div className="flex items-center gap-1 text-[11px] font-mono text-purple-300 font-bold bg-purple-950/80 px-1.5 py-0.2 rounded border border-purple-800/60">
+                <span>⏱️ {timeLeft}</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

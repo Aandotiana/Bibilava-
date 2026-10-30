@@ -1,7 +1,7 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
-*/
+ */
 
 export type GameState = {
   players: Record<string, Player>;
@@ -39,6 +39,54 @@ export type LeaderboardEntry = {
   score: number;
   color: string;
 };
+
+// --- LOBBY AND PRIVATE ROOM TYPES ---
+export type GameMode = 'classic' | 'speed_rush' | 'survival';
+export type RoomStatus = 'lobby' | 'starting' | 'in_game' | 'game_over';
+
+export interface RoomSettings {
+  maxPlayers: number;
+  gameMode: GameMode;
+  durationMinutes: number; // 0 for unlimited, 2, 3, 5
+  orbDensity: 'normal' | 'high';
+  speed: 'normal' | 'fast';
+}
+
+export interface RoomPlayer {
+  id: string;
+  name: string;
+  color: string;
+  avatar: string;
+  isHost: boolean;
+  isReady: boolean;
+  isSpeaking: boolean;
+  isMicMuted: boolean;
+  connected: boolean;
+}
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderColor: string;
+  text: string;
+  timestamp: number;
+  isSystem?: boolean;
+}
+
+export interface RoomData {
+  code: string;
+  name: string;
+  hostId: string;
+  players: Record<string, RoomPlayer>;
+  settings: RoomSettings;
+  chat: ChatMessage[];
+  status: RoomStatus;
+  countdown: number;
+  playAgainVotes: string[];
+  createdAt: number;
+  matchEndsAt?: number;
+}
 
 export const WORLD_SIZE = 150;
 export const BASE_SPEED = 15;
