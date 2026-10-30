@@ -8,6 +8,8 @@ import { createServer as createViteServer } from 'vite';
 import { Server } from 'socket.io';
 import { createServer } from 'http';
 import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import {
   GameState,
   Player,
@@ -26,15 +28,23 @@ import {
   ChatMessage,
 } from './src/shared/types.ts';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
 const httpServer = createServer(app);
+
+// Allow configurable CORS origins for deployment (defaults to '*' for open access)
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
 const io = new Server(httpServer, {
   cors: {
-    origin: '*',
+    origin: ALLOWED_ORIGIN,
+    methods: ['GET', 'POST'],
   },
 });
 
-const PORT = 3000;
+// Render dynamically assigns process.env.PORT (e.g. 10000)
+const PORT = parseInt(process.env.PORT || '3000', 10);
 
 const COLORS = [
   '#00f5ff', // Neon Cyan
@@ -671,7 +681,7 @@ function handleLeaveRoom(socket: any, roomCode: string) {
 }
 
 // Room-based game loop
-setInterval(() => {
+const gameLoopInterval = setInterval(() => {
   for (const code in rooms) {
     const room = rooms[code];
     if (room.status !== 'in_game') continue;
@@ -716,22 +726,66 @@ setInterval(() => {
 
 async function startServer() {
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', activeRooms: Object.keys(rooms).length });
+    res.json({
+      status: 'ok',
+      service: 'bibilava-neon-snake',
+      activeRooms: Object.keys(rooms).length,
+      uptimeSeconds: Math.floor(process.uptime()),
+      timestamp: Date.now(),
+      env: process.env.NODE_ENV || 'development',
+    });
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static('dist'));
+    const distPath = path.resolve(__dirname, 'dist');
+    // Serve static frontend assets built by vite build
+    app.use(express.static(distPath));
+
+    // Single Page Application (SPA) wildcard fallback:
+    // Any route not caught by static assets serves index.html (e.g. /?room=CODE)
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
   }
 
-  httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  const server = httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running in ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'} on http://0.0.0.0:${PORT}`);
   });
+
+  // Graceful termination handling for container platforms (Render, Cloud Run, Docker)
+  const handleShutdown = (signal: string) => {
+    console.log(`\n${signal} received. Initiating graceful shutdown...`);
+    clearInterval(gameLoopInterval);
+
+    // Clear active room timers
+    for (const code in rooms) {
+      const room = rooms[code];
+      if (room.countdownTimer) clearInterval(room.countdownTimer);
+      if (room.emptyTimeout) clearTimeout(room.emptyTimeout);
+    }
+
+    server.close(() => {
+      console.log('HTTP and WebSocket server closed successfully.');
+      process.exit(0);
+    });
+
+    // Force shutdown if connections do not close within 5s
+    setTimeout(() => {
+      console.error('Graceful shutdown timeout exceeded, forcing exit.');
+      process.exit(1);
+    }, 5000);
+  };
+
+  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+  process.on('SIGINT', () => handleShutdown('SIGINT'));
 }
 
 startServer();

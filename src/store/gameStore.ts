@@ -53,7 +53,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   connect: () => {
     if (get().socket) return;
 
-    const socket = io({
+    // Configurable server URL for production deployment (defaults to same-origin)
+    const serverUrl = ((import.meta as any).env?.VITE_SERVER_URL as string) || undefined;
+    const socket = io(serverUrl, {
       transports: ['polling', 'websocket'],
       upgrade: true,
       reconnectionAttempts: 10,
