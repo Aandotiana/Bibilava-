@@ -1,0 +1,8 @@
+{
+  "name": "Bibilava ",
+  "description": "Jeu bibilava ",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}
