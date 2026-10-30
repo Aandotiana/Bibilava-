@@ -32,14 +32,14 @@ When creating a new service in the Render dashboard:
 
 ## 3. Environment Variables
 
-Configure these in the **Environment** section of your Render Web Service:
+**Good news**: **No manual environment variables are strictly required** on Render. The app is pre-configured to work out of the box with zero manual environment variable setup:
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `NODE_ENV` | **Yes** | `production` | Enables production mode, builds static file serving, and skips dev middleware. |
-| `PORT` | Auto-injected | `10000` | Render automatically sets this. The server binds to `0.0.0.0:${PORT}`. |
-| `ALLOWED_ORIGIN` | Optional | `*` | Allowed CORS origin for Socket.IO. Defaults to `*` or set to your Render URL (e.g., `https://bibilava.onrender.com`). |
-| `VITE_SERVER_URL` | Optional | *Empty* | Leave empty when serving frontend and backend from the same Render service (same-origin). Set only if frontend is hosted separately on an external CDN. |
+| Variable | Required on Render? | Default Behavior |
+|---|---|---|
+| `PORT` | **No** (Auto-injected) | Render automatically injects `PORT=10000`. The server automatically listens on `0.0.0.0:${PORT}`. |
+| `NODE_ENV` | **No** (Optional) | Handled automatically by the start command (`NODE_ENV=production`) and auto-detects `RENDER=true`. |
+| `ALLOWED_ORIGINS` | **No** (Optional) | Defaults to `*` for open WebSocket access across domains. |
+| `VITE_SERVER_URL` | **No** (Leave Empty) | Intentionally left empty: Socket.IO client automatically connects to the same origin (`window.location.origin`) as the web page. |
 
 ---
 

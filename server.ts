@@ -9,6 +9,7 @@ import { Server } from 'socket.io';
 import { createServer } from 'http';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import {
   GameState,
@@ -35,7 +36,7 @@ const app = express();
 const httpServer = createServer(app);
 
 // Allow configurable CORS origins for deployment (defaults to '*' for open access)
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || process.env.ALLOWED_ORIGINS || '*';
 const io = new Server(httpServer, {
   cors: {
     origin: ALLOWED_ORIGIN,
@@ -736,7 +737,7 @@ async function startServer() {
     });
   });
 
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
 
   if (!isProduction) {
     const vite = await createViteServer({
@@ -746,6 +747,9 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(__dirname, 'dist');
+    if (!fs.existsSync(distPath)) {
+      console.warn('⚠️ Warning: "dist" folder not found! Ensure "npm run build" ran before starting the server.');
+    }
     // Serve static frontend assets built by vite build
     app.use(express.static(distPath));
 
