@@ -67,6 +67,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
       console.log('Connected to server with id:', socket.id);
       set({ playerId: socket.id });
       audioManager.setSocket(socket);
+
+      // Seamless reconnection: if user was in a room, re-join automatically
+      const currentRoom = get().room;
+      if (currentRoom) {
+        const storedPlayer = currentRoom.players[get().playerId || ''];
+        const myName = storedPlayer?.name || 'NeonSnake';
+        const myAvatar = storedPlayer?.avatar || 'viper';
+        socket.emit('join_room', {
+          roomCode: currentRoom.code,
+          playerName: myName,
+          avatar: myAvatar,
+        });
+      }
     });
 
     // Room events

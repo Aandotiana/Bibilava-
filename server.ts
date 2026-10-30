@@ -51,6 +51,7 @@ const COLORS = [
 interface InternalRoom extends RoomData {
   gameState: GameState;
   countdownTimer?: NodeJS.Timeout;
+  emptyTimeout?: NodeJS.Timeout;
 }
 
 const rooms: Record<string, InternalRoom> = {};
@@ -218,6 +219,12 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Cancel empty timeout if room is being rejoined
+    if (room.emptyTimeout) {
+      clearTimeout(room.emptyTimeout);
+      room.emptyTimeout = undefined;
+    }
+
     const currentCount = Object.keys(room.players).length;
     if (currentCount >= room.settings.maxPlayers && !room.players[socket.id]) {
       socket.emit('error_room', { message: `Room "${rawCode}" is full (${room.settings.maxPlayers}/${room.settings.maxPlayers} players).` });
@@ -240,13 +247,21 @@ io.on('connection', (socket) => {
     const availableColor = COLORS.find((c) => !usedColors.has(c)) || COLORS[Math.floor(Math.random() * COLORS.length)];
     const avatar = data?.avatar || 'volt';
 
+    // If room had become empty, re-joining player becomes host
+    const isFirstPlayer = Object.keys(room.players).length === 0;
+    if (isFirstPlayer) {
+      room.hostId = socket.id;
+    }
+
+    const isHostPlayer = room.hostId === socket.id;
+
     const player: RoomPlayer = {
       id: socket.id,
       name: cleanPlayerName,
       color: availableColor,
       avatar,
-      isHost: room.hostId === socket.id,
-      isReady: room.hostId === socket.id,
+      isHost: isHostPlayer,
+      isReady: isHostPlayer,
       isSpeaking: false,
       isMicMuted: false,
       connected: true,
@@ -280,8 +295,9 @@ io.on('connection', (socket) => {
   });
 
   // 3. TOGGLE READY STATUS
-  socket.on('toggle_ready', (data: { roomCode: string; isReady: boolean }) => {
-    const roomCode = data?.roomCode || socketRoomMap[socket.id];
+  socket.on('toggle_ready', (data: { roomCode?: string; isReady: boolean }) => {
+    const roomCode = socketRoomMap[socket.id];
+    if (!roomCode) return;
     const room = rooms[roomCode];
     if (!room || !room.players[socket.id]) return;
 
@@ -295,14 +311,15 @@ io.on('connection', (socket) => {
     broadcastRoomUpdate(roomCode);
   });
 
-  // 4. UPDATE SETTINGS (Host only)
-  socket.on('update_settings', (data: { roomCode: string; settings: Partial<RoomSettings> }) => {
-    const roomCode = data?.roomCode || socketRoomMap[socket.id];
+  // 4. UPDATE SETTINGS (Host only - strictly validated on backend)
+  socket.on('update_settings', (data: { roomCode?: string; settings: Partial<RoomSettings> }) => {
+    const roomCode = socketRoomMap[socket.id];
+    if (!roomCode) return;
     const room = rooms[roomCode];
     if (!room) return;
 
     if (socket.id !== room.hostId) {
-      socket.emit('error_room', { message: 'Only the room host can modify game settings.' });
+      socket.emit('error_room', { message: 'Security check: Only the room host can modify game settings.' });
       return;
     }
 
@@ -329,11 +346,17 @@ io.on('connection', (socket) => {
     broadcastRoomUpdate(roomCode);
   });
 
-  // 5. KICK PLAYER (Host only)
-  socket.on('kick_player', (data: { roomCode: string; targetId: string }) => {
-    const roomCode = data?.roomCode || socketRoomMap[socket.id];
+  // 5. KICK PLAYER (Host only - strictly validated on backend)
+  socket.on('kick_player', (data: { roomCode?: string; targetId: string }) => {
+    const roomCode = socketRoomMap[socket.id];
+    if (!roomCode) return;
     const room = rooms[roomCode];
-    if (!room || socket.id !== room.hostId) return;
+    if (!room) return;
+
+    if (socket.id !== room.hostId) {
+      socket.emit('error_room', { message: 'Security check: Only the room host can remove players.' });
+      return;
+    }
 
     const targetId = data.targetId;
     if (!targetId || targetId === room.hostId || !room.players[targetId]) return;
@@ -352,11 +375,17 @@ io.on('connection', (socket) => {
     broadcastRoomUpdate(roomCode);
   });
 
-  // 6. START GAME (Host only)
-  socket.on('start_game', (data: { roomCode: string }) => {
-    const roomCode = data?.roomCode || socketRoomMap[socket.id];
+  // 6. START GAME (Host only - strictly validated on backend)
+  socket.on('start_game', (data?: { roomCode?: string }) => {
+    const roomCode = socketRoomMap[socket.id];
+    if (!roomCode) return;
     const room = rooms[roomCode];
-    if (!room || socket.id !== room.hostId) return;
+    if (!room) return;
+
+    if (socket.id !== room.hostId) {
+      socket.emit('error_room', { message: 'Security check: Only the room host can start the match.' });
+      return;
+    }
 
     if (room.status === 'in_game' || room.status === 'starting') return;
 
@@ -617,10 +646,15 @@ function handleLeaveRoom(socket: any, roomCode: string) {
   const remainingPlayers = Object.keys(room.players);
 
   if (remainingPlayers.length === 0) {
-    // Delete room if empty
+    // 30-second grace period before deleting empty room to survive refreshes and reconnects
     if (room.countdownTimer) clearInterval(room.countdownTimer);
-    delete rooms[roomCode];
-    console.log(`Room ${roomCode} deleted (empty)`);
+    if (room.emptyTimeout) clearTimeout(room.emptyTimeout);
+    room.emptyTimeout = setTimeout(() => {
+      if (rooms[roomCode] && Object.keys(rooms[roomCode].players).length === 0) {
+        delete rooms[roomCode];
+        console.log(`Room ${roomCode} deleted after 30s empty grace period`);
+      }
+    }, 30000);
   } else {
     // Transfer host if host left
     if (room.hostId === socket.id) {
